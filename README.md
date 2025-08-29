@@ -136,10 +136,12 @@ Once connected, you can ask Claude Code to:
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `list_user_stories` | List user stories with filters | project_id, iteration_id, state, assigned_to, limit |
+| `list_user_stories` | List user stories with filters | project_id, iteration_id, state, where_clause, limit |
 | `get_user_story` | Get detailed story information | story_id |
-| `list_tasks` | List tasks with filters | story_id, assigned_to, state, limit |
-| `list_bugs` | List bugs with filters | project_id, state, severity, assigned_to, limit |
+| `list_tasks` | List tasks with filters | story_id, state, where_clause, limit |
+| `list_bugs` | List bugs with filters | project_id, state, severity, where_clause, limit |
+| `list_assignments` | **Find work assigned to users** | user_id, user_email, entity_type, state, project_id, limit |
+| `get_logged_user` | Get current user info | - |
 | `create_task` | Create a new task | name, story_id, description, assigned_user_id, effort |
 | `update_entity_state` | Change status of any entity | entity_type, entity_id, state_name |
 | `add_comment` | Add comment to any entity | entity_type, entity_id, comment |
@@ -147,6 +149,63 @@ Once connected, you can ask Claude Code to:
 | `list_projects` | List all projects | - |
 | `list_iterations` | List iterations/sprints | project_id, is_current |
 | `search_entities` | Search by text | query, entity_types, limit |
+
+## Important: Finding Assigned Work
+
+To find work assigned to a specific user, use the `list_assignments` tool, NOT the `assigned_to` parameter on other tools. Target Process uses a complex many-to-many relationship for assignments.
+
+**Correct approach:**
+1. First, get your user info: `get_logged_user`
+2. Then use: `list_assignments` with your user_id or user_email
+
+**Example:**
+```
+# First get your user ID
+get_logged_user()
+# Returns: {"Id": 166, "Email": "jsymonds@liveworld.com", ...}
+
+# Then get your assignments
+list_assignments(user_email="jsymonds@liveworld.com", state="In Progress")
+```
+
+## Advanced Filtering with where_clause
+
+The `where_clause` parameter on list tools allows you to use Target Process's query syntax directly:
+
+### Filter Operators
+- `eq` - equals: `EntityState.Name eq 'Open'`
+- `ne` - not equals: `Priority.Name ne 'Low'`
+- `gt` - greater than: `CreateDate gt '2024-01-01'`
+- `lt` - less than: `Effort lt 10`
+- `gte` - greater or equal: `TimeSpent gte 5`
+- `lte` - less or equal: `Id lte 1000`
+- `contains` - text contains: `Name contains 'API'`
+- `in` - in list: `Id in (123, 456, 789)`
+- `is null` / `is not null` - null checks: `Description is not null`
+
+### Common Filter Examples
+
+**By date range:**
+```
+where_clause="(CreateDate gt '2024-01-01') and (CreateDate lt '2024-12-31')"
+```
+
+**By tags:**
+```
+where_clause="Tags contains 'urgent'"
+where_clause="Tags contains '*backend*'"  # Wildcards supported
+```
+
+**By custom fields:**
+```
+where_clause="CustomFields.Browser eq 'Firefox'"
+where_clause="'CustomFields.Release Notes' is not null"  # Note quotes for fields with spaces
+```
+
+**Complex combinations:**
+```
+where_clause="(Project.Name contains 'Mobile') and (EntityState.Name eq 'In Progress') and (Priority.Importance lte 3)"
+```
 
 ## API Details
 

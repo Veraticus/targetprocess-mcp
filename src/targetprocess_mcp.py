@@ -224,6 +224,7 @@ async def list_user_stories(
     iteration_id: Optional[int] = None,
     state: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    where_clause: Optional[str] = None,
     limit: int = 50,
 ) -> str:
     """
@@ -232,21 +233,34 @@ async def list_user_stories(
     Args:
         project_id: Filter by project ID
         iteration_id: Filter by iteration ID
-        state: Filter by state (e.g., "Open", "In Progress", "Done")
-        assigned_to: Filter by assigned user email or name
-        limit: Maximum number of results to return
+        state: Filter by state name (e.g., "Open", "In Progress", "Done")
+        assigned_to: [Note: Complex field - use where_clause for filtering by assignments]
+        where_clause: Custom Target Process filter (e.g., "EntityState.Name eq 'Open' and Project.Id eq 123")
+                     Examples:
+                     - "EntityState.Name eq 'In Progress'"
+                     - "Project.Name contains 'Mobile'"
+                     - "CreateDate gt '2024-01-01'"
+                     - "Tags contains 'urgent'"
+        limit: Maximum number of results to return (max 1000)
+    
+    Note: User assignments in Target Process are complex. To filter by assigned user,
+    consider using the Assignments endpoint or search_entities instead.
     """
     if not tp_client:
         init_client()
 
     where_clauses = []
+    if where_clause:
+        where_clauses.append(where_clause)
     if project_id:
         where_clauses.append(f"Project.Id eq {project_id}")
     if iteration_id:
         where_clauses.append(f"Iteration.Id eq {iteration_id}")
     if state:
         where_clauses.append(f"EntityState.Name eq '{state}'")
+    # Note: assigned_to is kept for backward compatibility but may not work as expected
     if assigned_to:
+        logger.warning("assigned_to filter may not work as expected. Consider using search_entities or custom where_clause.")
         where_clauses.append(
             f"(AssignedUser.Email eq '{assigned_to}' or AssignedUser.FirstName eq '{assigned_to}')"
         )
@@ -284,6 +298,7 @@ async def list_tasks(
     story_id: Optional[int] = None,
     assigned_to: Optional[str] = None,
     state: Optional[str] = None,
+    where_clause: Optional[str] = None,
     limit: int = 50,
 ) -> str:
     """
@@ -291,22 +306,28 @@ async def list_tasks(
 
     Args:
         story_id: Filter by user story ID
-        assigned_to: Filter by assigned user email or name
-        state: Filter by state (e.g., "Open", "In Progress", "Done")
-        limit: Maximum number of results to return
+        assigned_to: [Note: Complex field - use where_clause for filtering by assignments]
+        state: Filter by state name (e.g., "New", "In Progress", "Done")
+        where_clause: Custom Target Process filter (e.g., "UserStory.Id eq 123 and EntityState.Name eq 'Open'")
+                     See list_user_stories for more examples
+        limit: Maximum number of results to return (max 1000)
     """
     if not tp_client:
         init_client()
 
     where_clauses = []
+    if where_clause:
+        where_clauses.append(where_clause)
     if story_id:
         where_clauses.append(f"UserStory.Id eq {story_id}")
+    if state:
+        where_clauses.append(f"EntityState.Name eq '{state}'")
+    # Note: assigned_to is kept for backward compatibility but may not work as expected
     if assigned_to:
+        logger.warning("assigned_to filter may not work as expected. Consider using search_entities or custom where_clause.")
         where_clauses.append(
             f"(AssignedUser.Email eq '{assigned_to}' or AssignedUser.FirstName eq '{assigned_to}')"
         )
-    if state:
-        where_clauses.append(f"EntityState.Name eq '{state}'")
 
     where = " and ".join(where_clauses) if where_clauses else None
     include = "[Id,Name,Description,EntityState,UserStory[Id,Name],AssignedUser[FirstName,LastName,Email],Effort,TimeSpent,CreateDate,ModifyDate]"
@@ -324,6 +345,7 @@ async def list_bugs(
     state: Optional[str] = None,
     severity: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    where_clause: Optional[str] = None,
     limit: int = 50,
 ) -> str:
     """
@@ -331,22 +353,27 @@ async def list_bugs(
 
     Args:
         project_id: Filter by project ID
-        state: Filter by state (e.g., "Open", "In Progress", "Done")
+        state: Filter by state name (e.g., "Open", "In Progress", "Done")
         severity: Filter by severity (e.g., "Critical", "Major", "Minor")
-        assigned_to: Filter by assigned user email or name
-        limit: Maximum number of results to return
+        assigned_to: [Note: Complex field - use where_clause for filtering by assignments]
+        where_clause: Custom Target Process filter - see list_user_stories for examples
+        limit: Maximum number of results to return (max 1000)
     """
     if not tp_client:
         init_client()
 
     where_clauses = []
+    if where_clause:
+        where_clauses.append(where_clause)
     if project_id:
         where_clauses.append(f"Project.Id eq {project_id}")
     if state:
         where_clauses.append(f"EntityState.Name eq '{state}'")
     if severity:
         where_clauses.append(f"Severity.Name eq '{severity}'")
+    # Note: assigned_to is kept for backward compatibility but may not work as expected
     if assigned_to:
+        logger.warning("assigned_to filter may not work as expected. Consider using search_entities or custom where_clause.")
         where_clauses.append(
             f"(AssignedUser.Email eq '{assigned_to}' or AssignedUser.FirstName eq '{assigned_to}')"
         )
@@ -509,6 +536,82 @@ async def list_iterations(
         "Iterations", where=where, include=include, take=100
     )
 
+    return json.dumps(result, indent=2)
+
+
+@server.tool()
+async def list_assignments(
+    user_id: Optional[int] = None,
+    user_email: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    state: Optional[str] = None,
+    project_id: Optional[int] = None,
+    limit: int = 50,
+) -> str:
+    """
+    List assignments for a specific user - THIS IS THE PROPER WAY TO FIND ASSIGNED WORK
+    
+    Args:
+        user_id: The ID of the user to get assignments for
+        user_email: The email of the user (alternative to user_id)
+        entity_type: Filter by entity type (e.g., "UserStory", "Task", "Bug")
+        state: Filter by state name (e.g., "Open", "In Progress", "Done")
+        project_id: Filter by project ID
+        limit: Maximum number of results to return
+        
+    Note: This queries the Assignments endpoint which properly handles the many-to-many
+    relationship between users and assignable entities in Target Process.
+    """
+    if not tp_client:
+        init_client()
+    
+    where_clauses = []
+    
+    # Filter by user
+    if user_id:
+        where_clauses.append(f"GeneralUser.Id eq {user_id}")
+    elif user_email:
+        where_clauses.append(f"GeneralUser.Email eq '{user_email}'")
+    
+    # Filter by entity type
+    if entity_type:
+        where_clauses.append(f"Assignable.EntityType.Name eq '{entity_type}'")
+    
+    # Filter by state
+    if state:
+        where_clauses.append(f"Assignable.EntityState.Name eq '{state}'")
+        
+    # Filter by project
+    if project_id:
+        where_clauses.append(f"Assignable.Project.Id eq {project_id}")
+    
+    where = " and ".join(where_clauses) if where_clauses else None
+    include = "[GeneralUser[Id,FirstName,LastName,Email],Assignable[Id,Name,EntityType,EntityState,Project[Name],CreateDate,ModifyDate]]"
+    
+    result = await tp_client.get_entities(
+        "Assignments", where=where, include=include, take=limit
+    )
+    
+    return json.dumps(result, indent=2)
+
+
+@server.tool()
+async def get_logged_user() -> str:
+    """
+    Get information about the currently authenticated user
+    
+    Returns details about the user associated with the current access token.
+    This is useful for finding your own user ID to use with other queries.
+    """
+    if not tp_client:
+        init_client()
+    
+    result = await tp_client.get_entity_by_id(
+        "Users", 
+        "LoggedUser",
+        include="[Id,FirstName,LastName,Email,Login,IsActive,IsAdministrator]"
+    )
+    
     return json.dumps(result, indent=2)
 
 
