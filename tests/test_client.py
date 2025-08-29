@@ -20,28 +20,17 @@ def client():
     return TargetProcessClient(config)
 
 
-@pytest.fixture
-def client_with_creds():
-    """Create a TargetProcessClient with username/password"""
-    config = TargetProcessConfig(
-        base_url="https://test.tpondemand.com", username="testuser", password="testpass"
-    )
-    return TargetProcessClient(config)
-
-
 class TestTargetProcessClient:
     def test_init_with_token(self, client):
         """Test client initialization with API token"""
         assert client.base_url == "https://test.tpondemand.com"
         assert client.api_v1_url == "https://test.tpondemand.com/api/v1"
         assert client.api_v2_url == "https://test.tpondemand.com/api/v2"
-        assert "Authorization" in client.headers
+        assert client.access_token == "test_token"
         assert client.headers["Accept"] == "application/json"
-
-    def test_init_with_credentials(self, client_with_creds):
-        """Test client initialization with username/password"""
-        assert client_with_creds.base_url == "https://test.tpondemand.com"
-        assert "Authorization" in client_with_creds.headers
+        assert client.headers["Content-Type"] == "application/json"
+        # No Authorization header since we use access_token param
+        assert "Authorization" not in client.headers
 
     @pytest.mark.asyncio
     async def test_get_entities(self, client):

@@ -41,18 +41,18 @@ class TargetProcessClient:
         self.base_url = config.base_url.rstrip("/")
         self.api_v1_url = f"{self.base_url}/api/v1"
         self.api_v2_url = f"{self.base_url}/api/v2"
-
-        # Setup authentication headers
+        
+        # Store token for URL parameter or prepare headers for basic auth
+        self.access_token = config.token
+        
+        # Setup headers
         self.headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
-
-        if config.token:
-            self.headers["Authorization"] = (
-                f"Basic {base64.b64encode(f':{config.token}'.encode()).decode()}"
-            )
-        elif config.username and config.password:
+        
+        # Only use Authorization header for username/password auth
+        if not self.access_token and config.username and config.password:
             credentials = base64.b64encode(
                 f"{config.username}:{config.password}".encode()
             ).decode()
@@ -71,6 +71,10 @@ class TargetProcessClient:
             params["where"] = where
         if include:
             params["include"] = include
+        
+        # Add access_token to params if using token auth
+        if self.access_token:
+            params["access_token"] = self.access_token
 
         url = f"{self.api_v1_url}/{entity_type}"
 
@@ -86,6 +90,10 @@ class TargetProcessClient:
         params = {"format": "json"}
         if include:
             params["include"] = include
+        
+        # Add access_token to params if using token auth
+        if self.access_token:
+            params["access_token"] = self.access_token
 
         url = f"{self.api_v1_url}/{entity_type}/{entity_id}"
 
@@ -100,6 +108,10 @@ class TargetProcessClient:
         """Create a new entity"""
         url = f"{self.api_v1_url}/{entity_type}"
         params = {"format": "json"}
+        
+        # Add access_token to params if using token auth
+        if self.access_token:
+            params["access_token"] = self.access_token
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -114,6 +126,10 @@ class TargetProcessClient:
         """Update an existing entity"""
         url = f"{self.api_v1_url}/{entity_type}/{entity_id}"
         params = {"format": "json"}
+        
+        # Add access_token to params if using token auth
+        if self.access_token:
+            params["access_token"] = self.access_token
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -128,6 +144,10 @@ class TargetProcessClient:
         """Add a comment to an entity"""
         url = f"{self.api_v1_url}/Comment"
         params = {"format": "json"}
+        
+        # Add access_token to params if using token auth
+        if self.access_token:
+            params["access_token"] = self.access_token
 
         data = {"Description": comment, "General": {"Id": entity_id}}
 
@@ -169,33 +189,27 @@ def init_client():
     # First try environment variables
     base_url = os.getenv("TARGETPROCESS_URL")
     token = os.getenv("TARGETPROCESS_TOKEN")
-    username = os.getenv("TARGETPROCESS_USERNAME")
-    password = os.getenv("TARGETPROCESS_PASSWORD")
 
     # If environment variables are not complete, try config file
-    if not base_url or (not token and not (username and password)):
+    if not base_url or not token:
         config_data = load_config_from_file()
 
         # Use config file values if env vars are missing
         base_url = base_url or config_data.get("TARGETPROCESS_URL")
         token = token or config_data.get("TARGETPROCESS_TOKEN")
-        username = username or config_data.get("TARGETPROCESS_USERNAME")
-        password = password or config_data.get("TARGETPROCESS_PASSWORD")
 
     if not base_url:
         raise ValueError(
             "TARGETPROCESS_URL not found in environment variables or ~/.config/targetprocess/config.json"
         )
 
-    if not token and not (username and password):
+    if not token:
         raise ValueError(
-            "Either TARGETPROCESS_TOKEN or TARGETPROCESS_USERNAME/PASSWORD is required "
+            "TARGETPROCESS_TOKEN is required "
             "(check environment variables or ~/.config/targetprocess/config.json)"
         )
 
-    config = TargetProcessConfig(
-        base_url=base_url, token=token, username=username, password=password
-    )
+    config = TargetProcessConfig(base_url=base_url, token=token)
 
     tp_client = TargetProcessClient(config)
     logger.info(f"Initialized Target Process client for {base_url}")

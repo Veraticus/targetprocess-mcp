@@ -108,10 +108,7 @@ class TestConfigLoading:
             with pytest.raises(ValueError) as exc_info:
                 init_client()
 
-            assert (
-                "TARGETPROCESS_TOKEN or TARGETPROCESS_USERNAME/PASSWORD is required"
-                in str(exc_info.value)
-            )
+            assert "TARGETPROCESS_TOKEN is required" in str(exc_info.value)
 
     @patch("pathlib.Path.home")
     def test_load_config_from_file_exists(self, mock_home):
@@ -157,21 +154,3 @@ class TestConfigLoading:
             result = load_config_from_file()
             assert result == {}
 
-    @patch.dict(
-        os.environ,
-        {
-            "TARGETPROCESS_URL": "https://env.tpondemand.com",
-            "TARGETPROCESS_USERNAME": "user",
-            "TARGETPROCESS_PASSWORD": "pass",
-        },
-    )
-    def test_init_client_with_username_password(self):
-        """Test client initialization with username/password from env vars"""
-        with patch("src.targetprocess_mcp.tp_client", None):
-            init_client()
-
-            from src import targetprocess_mcp
-
-            assert targetprocess_mcp.tp_client is not None
-            assert targetprocess_mcp.tp_client.base_url == "https://env.tpondemand.com"
-            assert "Authorization" in targetprocess_mcp.tp_client.headers
