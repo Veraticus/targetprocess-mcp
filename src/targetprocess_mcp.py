@@ -389,6 +389,46 @@ async def list_bugs(
 
 
 @server.tool()
+async def create_user_story(
+    name: str,
+    project_id: int,
+    description: Optional[str] = None,
+    assigned_user_id: Optional[int] = None,
+    iteration_id: Optional[int] = None,
+    effort: Optional[float] = None,
+) -> str:
+    """
+    Create a new user story in Target Process
+
+    Args:
+        name: User story name
+        project_id: ID of the project
+        description: User story description (supports HTML)
+        assigned_user_id: ID of user to assign the story to
+        iteration_id: ID of the iteration/sprint to add the story to
+        effort: Estimated effort in story points or hours
+    """
+    if not tp_client:
+        init_client()
+
+    data = {"Name": name, "Project": {"Id": project_id}}
+
+    if description:
+        data["Description"] = description
+    if assigned_user_id:
+        # Create assignment through Assignments collection
+        data["Assignments"] = {"Items": [{"GeneralUser": {"Id": assigned_user_id}, "Role": {"Id": 1}}]}
+    if iteration_id:
+        data["Iteration"] = {"Id": iteration_id}
+    if effort:
+        data["Effort"] = effort
+
+    result = await tp_client.create_entity("UserStory", data)
+
+    return json.dumps(result, indent=2)
+
+
+@server.tool()
 async def create_task(
     name: str,
     story_id: int,

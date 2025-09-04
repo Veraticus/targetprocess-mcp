@@ -130,6 +130,39 @@ class TestToolFunctions:
             )
 
     @pytest.mark.asyncio
+    async def test_create_user_story(self, mock_client):
+        """Test creating a new user story"""
+        mock_client.create_entity.return_value = {
+            "Id": 999,
+            "Name": "New User Story",
+            "Project": {"Id": 100},
+        }
+
+        with patch.object(targetprocess_mcp, "tp_client", mock_client):
+            result = await targetprocess_mcp.create_user_story(
+                name="New User Story",
+                project_id=100,
+                description="Story description",
+                assigned_user_id=50,
+                iteration_id=25,
+                effort=8,
+            )
+
+            result_data = json.loads(result)
+            assert result_data["Id"] == 999
+            assert result_data["Name"] == "New User Story"
+
+            mock_client.create_entity.assert_called_once()
+            call_args = mock_client.create_entity.call_args
+            assert call_args[0][0] == "UserStory"
+            assert call_args[0][1]["Name"] == "New User Story"
+            assert call_args[0][1]["Project"]["Id"] == 100
+            assert call_args[0][1]["Description"] == "Story description"
+            assert call_args[0][1]["Assignments"]["Items"][0]["GeneralUser"]["Id"] == 50
+            assert call_args[0][1]["Iteration"]["Id"] == 25
+            assert call_args[0][1]["Effort"] == 8
+
+    @pytest.mark.asyncio
     async def test_create_task(self, mock_client):
         """Test creating a new task"""
         mock_client.create_entity.return_value = {

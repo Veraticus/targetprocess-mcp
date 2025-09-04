@@ -62,6 +62,7 @@
             pythonPackages.pip
             pythonPackages.black
             pythonPackages.pytest
+            pythonPackages.pytest-asyncio
             pythonPackages.mcp
             pythonPackages.httpx
             pythonPackages.python-dotenv
