@@ -154,7 +154,7 @@ class TestToolFunctions:
 
             mock_client.create_entity.assert_called_once()
             call_args = mock_client.create_entity.call_args
-            assert call_args[0][0] == "UserStory"
+            assert call_args[0][0] == "UserStories"
             assert call_args[0][1]["Name"] == "New User Story"
             assert call_args[0][1]["Project"]["Id"] == 100
             assert call_args[0][1]["Description"] == "Story description"

@@ -423,7 +423,7 @@ async def create_user_story(
     if effort:
         data["Effort"] = effort
 
-    result = await tp_client.create_entity("UserStory", data)
+    result = await tp_client.create_entity("UserStories", data)
 
     return json.dumps(result, indent=2)
 
