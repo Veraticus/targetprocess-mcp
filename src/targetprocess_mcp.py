@@ -3,6 +3,25 @@
 Target Process MCP Server
 
 Provides MCP tools for interacting with Target Process/Apptio Targetprocess.
+
+Note on Description Fields:
+Target Process description fields accept HTML formatting. Plain text with newlines
+will NOT display line breaks in the UI. To format text properly, use:
+
+- <p>...</p> for paragraphs
+- <br/> or <br> for line breaks within paragraphs
+- <strong>...</strong> or <b>...</b> for bold text
+- <em>...</em> or <i>...</i> for italic text
+- <ul><li>...</li></ul> for bullet lists
+- <ol><li>...</li></ol> for numbered lists
+- <a href="...">...</a> for links
+- <h1>...<h6> for headings
+
+Example:
+  description = '<p>First paragraph</p><p>Second paragraph<br/>with a line break</p>'
+
+If you have plain text with newlines, you'll need to convert it to HTML format
+for proper display in the Target Process UI.
 """
 
 import os
@@ -57,6 +76,7 @@ class TargetProcessClient:
                 f"{config.username}:{config.password}".encode()
             ).decode()
             self.headers["Authorization"] = f"Basic {credentials}"
+    
 
     async def get_entities(
         self,
@@ -392,6 +412,10 @@ async def list_bugs(
 async def create_user_story(
     name: str,
     project_id: int,
+    description: Optional[str] = None,
+    assigned_user_id: Optional[int] = None,
+    iteration_id: Optional[int] = None,
+    effort: Optional[float] = None,
 ) -> str:
     """
     Create a new user story in Target Process
@@ -399,13 +423,25 @@ async def create_user_story(
     Args:
         name: User story name
         project_id: ID of the project
-    
-    Note: To add description, assignments, or effort, update the story after creation
+        description: User story description (HTML format - use <p>, <br/> for line breaks)
+        assigned_user_id: ID of user to assign the story to
+        iteration_id: ID of the iteration/sprint to add the story to
+        effort: Estimated effort in story points or hours
     """
     if not tp_client:
         init_client()
 
     data = {"Name": name, "Project": {"Id": project_id}}
+
+    if description is not None:
+        data["Description"] = description
+    if assigned_user_id:
+        # Create assignment through Assignments collection
+        data["Assignments"] = {"Items": [{"GeneralUser": {"Id": assigned_user_id}, "Role": {"Id": 1}}]}
+    if iteration_id:
+        data["Iteration"] = {"Id": iteration_id}
+    if effort is not None:
+        data["Effort"] = effort
 
     result = await tp_client.create_entity("UserStories", data)
 
@@ -426,7 +462,7 @@ async def create_task(
     Args:
         name: Task name
         story_id: ID of the parent user story
-        description: Task description
+        description: Task description (HTML format - use <p>, <br/> for line breaks)
         assigned_user_id: ID of user to assign the task to
         effort: Estimated effort in hours
     """
@@ -689,7 +725,7 @@ async def update_user_story(
     Args:
         story_id: ID of the user story to update
         name: New name for the story
-        description: New description (markdown format)
+        description: New description (HTML format - use <p>, <br/> for line breaks)
         state_id: ID of the new entity state (use get_entity_states to find valid IDs)
         effort: New effort estimate
         iteration_id: ID of iteration to assign to
