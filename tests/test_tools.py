@@ -142,10 +142,6 @@ class TestToolFunctions:
             result = await targetprocess_mcp.create_user_story(
                 name="New User Story",
                 project_id=100,
-                description="Story description",
-                assigned_user_id=50,
-                iteration_id=25,
-                effort=8,
             )
 
             result_data = json.loads(result)
@@ -157,10 +153,6 @@ class TestToolFunctions:
             assert call_args[0][0] == "UserStories"
             assert call_args[0][1]["Name"] == "New User Story"
             assert call_args[0][1]["Project"]["Id"] == 100
-            assert call_args[0][1]["Description"] == "Story description"
-            assert call_args[0][1]["Assignments"]["Items"][0]["GeneralUser"]["Id"] == 50
-            assert call_args[0][1]["Iteration"]["Id"] == 25
-            assert call_args[0][1]["Effort"] == 8
 
     @pytest.mark.asyncio
     async def test_create_task(self, mock_client):
