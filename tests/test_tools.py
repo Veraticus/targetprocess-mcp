@@ -332,3 +332,109 @@ class TestToolFunctions:
             assert len(result_data["Bugs"]) == 1
 
             assert mock_client.get_entities.call_count == 3
+    
+    @pytest.mark.asyncio
+    async def test_update_user_story(self, mock_client):
+        """Test updating a user story"""
+        mock_client.update_entity.return_value = {
+            "Id": 123,
+            "Name": "Updated Story",
+            "Description": "New description",
+        }
+
+        with patch.object(targetprocess_mcp, "tp_client", mock_client):
+            result = await targetprocess_mcp.update_user_story(
+                story_id=123,
+                name="Updated Story",
+                description="New description",
+                effort=5.0,
+            )
+
+            result_data = json.loads(result)
+            assert result_data["Id"] == 123
+            assert result_data["Name"] == "Updated Story"
+
+            mock_client.update_entity.assert_called_once()
+            call_args = mock_client.update_entity.call_args
+            assert call_args[0][0] == "UserStories"
+            assert call_args[0][1] == 123
+            assert call_args[0][2]["Name"] == "Updated Story"
+            assert call_args[0][2]["Description"] == "New description"
+            assert call_args[0][2]["Effort"] == 5.0
+    
+    @pytest.mark.asyncio
+    async def test_get_entity_states(self, mock_client):
+        """Test getting entity states"""
+        mock_client.get_entities.return_value = {
+            "Items": [
+                {
+                    "Id": 1,
+                    "Name": "New",
+                    "NumericPriority": 1.0,
+                    "Process": {"Id": 1, "Name": "Scrum"},
+                    "EntityType": {"Name": "UserStory"}
+                },
+                {
+                    "Id": 2,
+                    "Name": "Done",
+                    "NumericPriority": 10.0,
+                    "Process": {"Id": 1, "Name": "Scrum"},
+                    "EntityType": {"Name": "UserStory"}
+                },
+            ]
+        }
+
+        with patch.object(targetprocess_mcp, "tp_client", mock_client):
+            result = await targetprocess_mcp.get_entity_states(
+                entity_type="UserStory",
+                process_id=1,
+            )
+
+            result_data = json.loads(result)
+            assert len(result_data["Items"]) == 2
+            # Should be sorted by priority
+            assert result_data["Items"][0]["Name"] == "New"
+            assert result_data["Items"][1]["Name"] == "Done"
+
+            mock_client.get_entities.assert_called_once_with(
+                "EntityStates",
+                where="EntityType.Name eq 'UserStory' and Process.Id eq 1",
+                include="[Id,Name,NumericPriority,Process[Id,Name],EntityType[Name]]",
+                take=100,
+            )
+    
+    @pytest.mark.asyncio
+    async def test_delete_entity(self, mock_client):
+        """Test marking an entity as deleted/done"""
+        # Mock getting the entity
+        mock_client.get_entity_by_id.return_value = {
+            "Id": 123,
+            "Name": "Test Story",
+            "Project": {"Process": {"Id": 1}},
+        }
+        
+        # Mock finding the Done state
+        mock_client.get_entities.return_value = {
+            "Items": [{"Id": 5, "Name": "Done"}]
+        }
+        
+        # Mock updating the entity
+        mock_client.update_entity.return_value = {
+            "Id": 123,
+            "EntityState": {"Id": 5, "Name": "Done"}
+        }
+
+        with patch.object(targetprocess_mcp, "tp_client", mock_client):
+            result = await targetprocess_mcp.delete_entity(
+                entity_type="UserStory",
+                entity_id=123,
+            )
+
+            result_data = json.loads(result)
+            assert result_data["Id"] == 123
+            assert result_data["Note"] == "Entity marked as Done"
+
+            # Should have called get_entity_by_id, get_entities (for state), and update_entity
+            mock_client.get_entity_by_id.assert_called_once()
+            mock_client.get_entities.assert_called_once()
+            mock_client.update_entity.assert_called_once()

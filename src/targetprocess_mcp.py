@@ -674,6 +674,159 @@ async def search_entities(
     return json.dumps(results, indent=2)
 
 
+@server.tool()
+async def update_user_story(
+    story_id: int,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    state_id: Optional[int] = None,
+    effort: Optional[float] = None,
+    iteration_id: Optional[int] = None,
+) -> str:
+    """
+    Update an existing user story
+    
+    Args:
+        story_id: ID of the user story to update
+        name: New name for the story
+        description: New description (supports HTML)
+        state_id: ID of the new entity state (use get_entity_states to find valid IDs)
+        effort: New effort estimate
+        iteration_id: ID of iteration to assign to
+    """
+    if not tp_client:
+        init_client()
+    
+    data = {}
+    if name:
+        data["Name"] = name
+    if description:
+        data["Description"] = description
+    if state_id:
+        data["EntityState"] = {"Id": state_id}
+    if effort is not None:
+        data["Effort"] = effort
+    if iteration_id:
+        data["Iteration"] = {"Id": iteration_id}
+    
+    if not data:
+        return json.dumps({"error": "No fields to update"})
+    
+    result = await tp_client.update_entity("UserStories", story_id, data)
+    return json.dumps(result, indent=2)
+
+
+@server.tool()
+async def get_entity_states(
+    entity_type: str = "UserStory",
+    process_id: Optional[int] = None,
+    project_id: Optional[int] = None,
+) -> str:
+    """
+    Get available entity states for a specific entity type and process
+    
+    Args:
+        entity_type: Type of entity (UserStory, Task, Bug)
+        process_id: Filter by process ID
+        project_id: Get states for the process of a specific project
+        
+    Returns states with their IDs that can be used in updates
+    """
+    if not tp_client:
+        init_client()
+    
+    where_clauses = [f"EntityType.Name eq '{entity_type}'"]
+    
+    if process_id:
+        where_clauses.append(f"Process.Id eq {process_id}")
+    elif project_id:
+        # First get the project's process
+        project = await tp_client.get_entity_by_id(
+            "Projects", project_id, include="[Process]"
+        )
+        if project and project.get("Process"):
+            process_id = project["Process"]["Id"]
+            where_clauses.append(f"Process.Id eq {process_id}")
+    
+    where = " and ".join(where_clauses)
+    include = "[Id,Name,NumericPriority,Process[Id,Name],EntityType[Name]]"
+    
+    result = await tp_client.get_entities(
+        "EntityStates", where=where, include=include, take=100
+    )
+    
+    # Format the output for easy reading
+    if result.get("Items"):
+        formatted_states = []
+        for state in result["Items"]:
+            formatted_states.append({
+                "Id": state["Id"],
+                "Name": state["Name"],
+                "Priority": state.get("NumericPriority", 0),
+                "Process": state.get("Process", {}).get("Name", "Unknown")
+            })
+        result["Items"] = sorted(formatted_states, key=lambda x: x["Priority"])
+    
+    return json.dumps(result, indent=2)
+
+
+@server.tool()
+async def delete_entity(
+    entity_type: str,
+    entity_id: int,
+    use_done_state: bool = True,
+) -> str:
+    """
+    Mark an entity as deleted/done (Target Process doesn't support hard delete via API)
+    
+    Args:
+        entity_type: Type of entity (UserStory, Task, Bug)
+        entity_id: ID of the entity to delete
+        use_done_state: If True, sets to Done state; if False, tries to find Deleted/Cancelled state
+        
+    Note: This doesn't actually delete the entity but marks it as Done/Completed
+    """
+    if not tp_client:
+        init_client()
+    
+    # Get the entity to find its process
+    entity_plural = entity_type if entity_type.endswith("ies") else f"{entity_type}s"
+    entity = await tp_client.get_entity_by_id(
+        entity_plural, entity_id, include="[Project[Process]]"
+    )
+    
+    if not entity:
+        return json.dumps({"error": f"{entity_type} {entity_id} not found"})
+    
+    process_id = entity.get("Project", {}).get("Process", {}).get("Id")
+    if not process_id:
+        return json.dumps({"error": "Could not determine process for entity"})
+    
+    # Find appropriate state
+    state_names = ["Done", "Completed", "Closed"] if use_done_state else ["Deleted", "Cancelled", "Rejected"]
+    
+    for state_name in state_names:
+        states = await tp_client.get_entities(
+            "EntityStates",
+            where=f"EntityType.Name eq '{entity_type}' and Process.Id eq {process_id} and Name eq '{state_name}'",
+            take=1
+        )
+        
+        if states.get("Items"):
+            state_id = states["Items"][0]["Id"]
+            data = {"EntityState": {"Id": state_id}}
+            result = await tp_client.update_entity(entity_plural, entity_id, data)
+            result["Note"] = f"Entity marked as {state_name}"
+            return json.dumps(result, indent=2)
+    
+    # If no suitable state found, list available states
+    available_states = await get_entity_states(entity_type, process_id=process_id)
+    return json.dumps({
+        "error": f"No suitable deletion state found for {entity_type} in this process",
+        "available_states": json.loads(available_states).get("Items", [])
+    })
+
+
 def main():
     """Main entry point for the MCP server"""
     import sys
