@@ -689,7 +689,7 @@ async def update_user_story(
     Args:
         story_id: ID of the user story to update
         name: New name for the story
-        description: New description (supports HTML)
+        description: New description (markdown format)
         state_id: ID of the new entity state (use get_entity_states to find valid IDs)
         effort: New effort estimate
         iteration_id: ID of iteration to assign to
